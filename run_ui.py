@@ -3,6 +3,7 @@ from helpers import dotenv, extension, runtime
 from helpers.print_style import PrintStyle
 from helpers.server_startup import run_uvicorn_with_retries
 from helpers.ui_server import UiServerRuntime, configure_process_environment
+from helpers.persist_chat import save_tmp_chats
 
 
 configure_process_environment()
@@ -52,10 +53,8 @@ def start_web_server(server_runtime: UiServerRuntime, host: str, port: int) -> N
 
 def create_flush_callback():
     def flush_and_shutdown_callback() -> None:
-        """
-        TODO(dev): add cleanup + flush-to-disk logic here.
-        """
-        return
+        save_tmp_chats()
+        extension.call_extensions_sync("shutdown")
 
     flush_ran = False
 
