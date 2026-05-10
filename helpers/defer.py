@@ -228,3 +228,23 @@ class DeferredTask:
         for task in pending:
             task.cancel()
         await asyncio.gather(*pending, return_exceptions=True)
+
+def background_task(func: Callable[..., Any], *args: Any, **kwargs: Any) -> None:
+    """
+    Run a function in the background.
+    If the function is a coroutine, it schedules it on the current running event loop if one exists,
+    otherwise it spins up a new thread with a new event loop.
+    If the function is synchronous, it runs it in a new thread.
+    """
+    if asyncio.iscoroutinefunction(func):
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(func(*args, **kwargs))
+        except RuntimeError:
+            def _run_async():
+                asyncio.run(func(*args, **kwargs))
+            threading.Thread(target=_run_async, daemon=True).start()
+    else:
+        def _run_sync():
+            func(*args, **kwargs)
+        threading.Thread(target=_run_sync, daemon=True).start()
