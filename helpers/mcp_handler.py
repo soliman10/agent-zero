@@ -22,6 +22,7 @@ from shutil import which
 from datetime import timedelta
 import json
 from helpers import errors
+from helpers import files
 from helpers import settings
 from helpers.log import LogItem
 
@@ -762,16 +763,12 @@ class MCPConfig(BaseModel):
 
                     prompt += "\n"
 
-                    prompt += (
-                        f"#### Usage:\n"
-                        f"{{\n"
-                        # f'    "observations": ["..."],\n' # TODO: this should be a prompt file with placeholders
-                        f'    "thoughts": ["..."],\n'
-                        # f'    "reflection": ["..."],\n' # TODO: this should be a prompt file with placeholders
-                        f"    \"tool_name\": \"{server_name}.{tool['name']}\",\n"
-                        f'    "tool_args": !follow schema above\n'
-                        f"}}\n"
+                    usage_prompt = files.read_prompt_file(
+                        "agent.system.mcp_tool_usage.md",
+                        _directories=[settings.PROMPTS_DIR],
+                        tool_name=f"{server_name}.{tool['name']}"
                     )
+                    prompt += usage_prompt + "\n"
 
         return prompt
 
