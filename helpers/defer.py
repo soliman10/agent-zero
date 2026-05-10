@@ -228,3 +228,16 @@ class DeferredTask:
         for task in pending:
             task.cancel()
         await asyncio.gather(*pending, return_exceptions=True)
+
+def background_task(coro: Coroutine[Any, Any, Any]) -> Optional[asyncio.Task]:
+    """
+    Run a coroutine in the background on the current running event loop.
+    If there is no running event loop, log a warning and return None.
+    """
+    try:
+        loop = asyncio.get_running_loop()
+        return loop.create_task(coro)
+    except RuntimeError:
+        from helpers.print_style import PrintStyle
+        PrintStyle.warning("background_task: no running event loop found. The task was not scheduled.")
+        return None
