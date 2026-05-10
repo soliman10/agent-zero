@@ -47,41 +47,15 @@ def get_agents_list(project_name: str | None = None) -> list[SubAgentListItem]:
 def get_agents_dict(
     project_name: str | None = None,
 ) -> dict[str, SubAgentListItem]:
-    def _merge_agent_dicts(
-        base: dict[str, SubAgentListItem],
-        overrides: dict[str, SubAgentListItem],
-    ) -> dict[str, SubAgentListItem]:
-        merged: dict[str, SubAgentListItem] = dict(base)
-        for name, override in overrides.items():
-            base_agent = merged.get(name)
-            merged[name] = (
-                _merge_agent_list_items(base_agent, override)
-                if base_agent
-                else override
-            )
-        return merged
-
-    from helpers import plugins
-
-    # load default, plugin, and custom agents and merge
-    default_agents = _get_agents_list_from_dir(DEFAULT_AGENTS_DIR, origin="default")
-    merged: dict[str, SubAgentListItem] = dict(default_agents)
-
-    # merge with plugin agents
-    for plugin_dir in plugins.get_enabled_plugin_paths(None, "agents"):
-        plugin_agents = _get_agents_list_from_dir(plugin_dir, origin="plugin")
-        merged = _merge_agent_dicts(merged, plugin_agents)
-
-    custom_agents = _get_agents_list_from_dir(USER_AGENTS_DIR, origin="user")
-    merged = _merge_agent_dicts(merged, custom_agents)
-
-    # merge with project agents if possible
-    if project_name:
-        from helpers import projects
-
-        project_agents_dir = projects.get_project_meta(project_name, "agents")
-        project_agents = _get_agents_list_from_dir(project_agents_dir, origin="project")
-        merged = _merge_agent_dicts(merged, project_agents)
+    merged: dict[str, SubAgentListItem] = {}
+    for root in get_agents_roots(project_name=project_name):
+        origin = origin_from_root(root)
+        items = _get_agents_list_from_dir(root, origin=origin)
+        for name, item in items.items():
+            if name in merged:
+                merged[name] = _merge_agent_list_items(merged[name], item)
+            else:
+                merged[name] = item
 
     return merged
 
@@ -111,41 +85,16 @@ def _get_agents_list_from_dir(dir: str, origin: Origin) -> dict[str, SubAgentLis
 
 
 def load_agent_data(name: str, project_name: str | None = None) -> SubAgent:
-    def _merge_agent(
-        original: SubAgent | None, override: SubAgent | None = None
-    ) -> SubAgent | None:
-        if original and override:
-            return _merge_agents(original, override)
-        elif original:
-            return original
-        return override
+    merged = None
 
-    from helpers import plugins
-
-    # load default, plugin, and user agents and merge
-    default_agent = _load_agent_data_from_dir(
-        DEFAULT_AGENTS_DIR, name, origin="default"
-    )
-    merged = default_agent
-
-    # merge with plugin agents
-    # TODO review this
-    for plugin_dir in plugins.get_enabled_plugin_paths(None, "agents"):
-        plugin_agent = _load_agent_data_from_dir(plugin_dir, name, origin="plugin")
-        merged = _merge_agent(merged, plugin_agent)
-
-    user_agent = _load_agent_data_from_dir(USER_AGENTS_DIR, name, origin="user")
-    merged = _merge_agent(merged, user_agent)
-
-    # merge with project agent if possible
-    if project_name:
-        from helpers import projects
-
-        project_agents_dir = projects.get_project_meta(project_name, "agents")
-        project_agent = _load_agent_data_from_dir(
-            project_agents_dir, name, origin="project"
-        )
-        merged = _merge_agent(merged, project_agent)
+    for root in get_agents_roots(project_name=project_name):
+        origin = origin_from_root(root)
+        agent = _load_agent_data_from_dir(root, name, origin=origin)
+        if agent is not None:
+            if merged is None:
+                merged = agent
+            else:
+                merged = _merge_agents(merged, agent)
 
     if merged is None:
         raise FileNotFoundError(
@@ -184,6 +133,8 @@ def delete_agent_data(name: str) -> None:
 
 
 def _load_agent_data_from_dir(dir: str, name: str, origin: Origin) -> SubAgent | None:
+    if not files.exists(files.get_abs_path(dir, name)):
+        return None
     try:
         agent_yaml_path = files.get_abs_path(dir, name, "agent.yaml")
         if files.exists(agent_yaml_path):
@@ -232,10 +183,10 @@ def _merge_agents(base: SubAgent | None, override: SubAgent | None) -> SubAgent 
     merged_prompts.update(override.prompts or {})
 
     return SubAgent(
-        name=override.name,
-        title=override.title,
-        description=override.description,
-        context=override.context,
+        name=override.name or base.name,
+        title=override.title or base.title,
+        description=override.description or base.description,
+        context=override.context or base.context,
         origin=_merge_origins(base.origin, override.origin),
         prompts=merged_prompts,
     )
@@ -254,11 +205,27 @@ def _merge_agent_list_items(
     )
 
 
-def get_agents_roots() -> list[str]:
+def origin_from_root(root: str) -> Origin:
+    rel = files.deabsolute_path(root).replace("\\", "/")
+    if rel.startswith("usr/projects/"):
+        return "project"
+    if rel.startswith("usr/agents"):
+        return "user"
+    if "/plugins/" in rel or rel.startswith("plugins/"):
+        return "plugin"
+    return "default"
+
+def get_agents_roots(project_name: str | None = None, all_projects: bool = False) -> list[str]:
     # from helpers import plugins
 
     plugin_agents = plugins.get_enabled_plugin_paths(None, "agents")
-    project_agents = files.find_existing_paths_by_pattern("usr/projects/*/.a0proj/agents")
+    project_agents = []
+    if all_projects:
+        project_agents = files.find_existing_paths_by_pattern("usr/projects/*/.a0proj/agents")
+    elif project_name:
+        from helpers import projects
+        project_agents.append(projects.get_project_meta(project_name, "agents"))
+
     paths = [
         files.get_abs_path(DEFAULT_AGENTS_DIR),
         *plugin_agents,
@@ -280,19 +247,9 @@ def get_agents_roots() -> list[str]:
 
 
 def get_all_agents_list() -> list[dict[str, str]]:
-    def _origin_from_root(root: str) -> Origin:
-        rel = files.deabsolute_path(root).replace("\\", "/")
-        if rel.startswith("usr/projects/"):
-            return "project"
-        if rel.startswith("usr/agents"):
-            return "user"
-        if "/plugins/" in rel or rel.startswith("plugins/"):
-            return "plugin"
-        return "default"
-
     merged: dict[str, SubAgentListItem] = {}
-    for root in get_agents_roots():
-        origin = _origin_from_root(root)
+    for root in get_agents_roots(all_projects=True):
+        origin = origin_from_root(root)
         items = _get_agents_list_from_dir(root, origin=origin)
         for name, item in items.items():
             if name in merged:
