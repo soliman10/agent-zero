@@ -13,10 +13,14 @@ from helpers.print_style import PrintStyle
 from helpers.providers import get_providers, FieldOption as ProvidersFO
 from helpers.secrets import get_default_secrets_manager
 from helpers import dirty_json
-from helpers.notification import NotificationManager, NotificationType, NotificationPriority
+from helpers.notification import (
+    NotificationManager,
+    NotificationType,
+    NotificationPriority,
+)
 
+T = TypeVar("T")
 
-T = TypeVar('T')
 
 def get_default_value(name: str, value: T) -> T:
     """
@@ -29,7 +33,9 @@ def get_default_value(name: str, value: T) -> T:
     Returns:
         Environment variable value (type-normalized) or default value
     """
-    env_value = dotenv.get_dotenv_value(f"A0_SET_{name}", dotenv.get_dotenv_value(f"A0_SET_{name.upper()}", None))
+    env_value = dotenv.get_dotenv_value(
+        f"A0_SET_{name}", dotenv.get_dotenv_value(f"A0_SET_{name.upper()}", None)
+    )
 
     if env_value is None:
         return value
@@ -37,7 +43,7 @@ def get_default_value(name: str, value: T) -> T:
     # Normalize type to match value param type
     try:
         if isinstance(value, bool):
-            return env_value.strip().lower() in ('true', '1', 'yes', 'on')  # type: ignore
+            return env_value.strip().lower() in ("true", "1", "yes", "on")  # type: ignore
         elif isinstance(value, dict):
             return json.loads(env_value.strip())  # type: ignore
         elif isinstance(value, str):
@@ -49,6 +55,7 @@ def get_default_value(name: str, value: T) -> T:
             f"Warning: Invalid value for A0_SET_{name}='{env_value}': {e}. Using default: {value}"
         )
         return value
+
 
 class Settings(TypedDict):
     version: str
@@ -112,6 +119,7 @@ class FieldOption(TypedDict):
     value: str
     label: str
 
+
 class SettingsField(TypedDict, total=False):
     id: str
     title: str
@@ -143,8 +151,10 @@ class SettingsSection(TypedDict, total=False):
     fields: list[SettingsField]
     tab: str  # Indicates which tab this section belongs to
 
+
 class ModelProvider(ProvidersFO):
     pass
+
 
 class SettingsOutputAdditional(TypedDict):
     chat_providers: list[ModelProvider]
@@ -170,7 +180,10 @@ _runtime_settings_snapshot: Settings | None = None
 
 OptionT = TypeVar("OptionT", bound=FieldOption)
 
-def _ensure_option_present(options: list[OptionT] | None, current_value: str | None) -> list[OptionT]:
+
+def _ensure_option_present(
+    options: list[OptionT] | None, current_value: str | None
+) -> list[OptionT]:
     """
     Ensure the currently selected value exists in a dropdown options list.
     If missing, inserts it at the front as {value: current_value, label: current_value}.
@@ -184,18 +197,23 @@ def _ensure_option_present(options: list[OptionT] | None, current_value: str | N
     opts.insert(0, cast(OptionT, {"value": current_value, "label": current_value}))
     return opts
 
+
 def convert_out(settings: Settings) -> SettingsOutput:
     out = SettingsOutput(
-        settings = settings.copy(),
-        additional = SettingsOutputAdditional(
+        settings=settings.copy(),
+        additional=SettingsOutputAdditional(
             chat_providers=get_providers("chat"),
             embedding_providers=get_providers("embedding"),
             is_dockerized=runtime.is_dockerized(),
-            agent_subdirs=[{"value": item["key"], "label": item["label"]}
+            agent_subdirs=[
+                {"value": item["key"], "label": item["label"]}
                 for item in subagents.get_all_agents_list()
-                if item["key"] != "_example"],
-            knowledge_subdirs=[{"value": subdir, "label": subdir}
-                for subdir in files.get_subdirectories("knowledge", exclude="default")],
+                if item["key"] != "_example"
+            ],
+            knowledge_subdirs=[
+                {"value": subdir, "label": subdir}
+                for subdir in files.get_subdirectories("knowledge", exclude="default")
+            ],
             stt_models=[
                 {"value": "tiny", "label": "Tiny (39M, English)"},
                 {"value": "base", "label": "Base (74M, English)"},
@@ -223,30 +241,44 @@ def convert_out(settings: Settings) -> SettingsOutput:
         ),
     }
 
-    additional["agent_subdirs"] = _ensure_option_present(additional.get("agent_subdirs"), current.get("agent_profile"))
-    additional["knowledge_subdirs"] = _ensure_option_present(additional.get("knowledge_subdirs"), current.get("agent_knowledge_subdir"))
-    additional["stt_models"] = _ensure_option_present(additional.get("stt_models"), current.get("stt_model_size"))
+    additional["agent_subdirs"] = _ensure_option_present(
+        additional.get("agent_subdirs"), current.get("agent_profile")
+    )
+    additional["knowledge_subdirs"] = _ensure_option_present(
+        additional.get("knowledge_subdirs"), current.get("agent_knowledge_subdir")
+    )
+    additional["stt_models"] = _ensure_option_present(
+        additional.get("stt_models"), current.get("stt_model_size")
+    )
 
     # masked api keys
     providers = get_providers("chat") + get_providers("embedding")
     for provider in providers:
         provider_name = provider["value"]
-        api_key = settings["api_keys"].get(provider_name, models.get_api_key(provider_name))
-        settings["api_keys"][provider_name] = API_KEY_PLACEHOLDER if api_key and api_key != "None" else ""
+        api_key = settings["api_keys"].get(
+            provider_name, models.get_api_key(provider_name)
+        )
+        settings["api_keys"][provider_name] = (
+            API_KEY_PLACEHOLDER if api_key and api_key != "None" else ""
+        )
 
     # load auth from dotenv
     out["settings"]["auth_login"] = dotenv.get_dotenv_value(dotenv.KEY_AUTH_LOGIN) or ""
     out["settings"]["auth_password"] = (
-        PASSWORD_PLACEHOLDER if dotenv.get_dotenv_value(dotenv.KEY_AUTH_PASSWORD) else ""
+        PASSWORD_PLACEHOLDER
+        if dotenv.get_dotenv_value(dotenv.KEY_AUTH_PASSWORD)
+        else ""
     )
     out["settings"]["rfc_password"] = (
         PASSWORD_PLACEHOLDER if dotenv.get_dotenv_value(dotenv.KEY_RFC_PASSWORD) else ""
     )
     out["settings"]["root_password"] = (
-        PASSWORD_PLACEHOLDER if dotenv.get_dotenv_value(dotenv.KEY_ROOT_PASSWORD) else ""
+        PASSWORD_PLACEHOLDER
+        if dotenv.get_dotenv_value(dotenv.KEY_ROOT_PASSWORD)
+        else ""
     )
 
-    #secrets
+    # secrets
     secrets_manager = get_default_secrets_manager()
     try:
         out["settings"]["secrets"] = secrets_manager.get_masked_secrets()
@@ -265,6 +297,7 @@ def convert_out(settings: Settings) -> SettingsOutput:
         if (key.endswith("_kwargs")) and isinstance(value, dict):
             out["settings"][key] = _dict_to_env(value)
     return out
+
 
 def _get_api_key_field(settings: Settings, provider: str, title: str) -> SettingsField:
     key = settings["api_keys"].get(provider, models.get_api_key(provider))
@@ -374,13 +407,14 @@ def _adjust_to_version(settings: Settings, default: Settings):
             settings["agent_profile"] = "agent0"
 
 
-
 def _load_sensitive_settings(settings: Settings):
     # load api keys from .env
     providers = get_providers("chat") + get_providers("embedding")
     for provider in providers:
         provider_name = provider["value"]
-        api_key = settings["api_keys"].get(provider_name) or models.get_api_key(provider_name)
+        api_key = settings["api_keys"].get(provider_name) or models.get_api_key(
+            provider_name
+        )
         if api_key and api_key != "None":
             settings["api_keys"][provider_name] = api_key
 
@@ -437,14 +471,15 @@ def _write_sensitive_settings(settings: Settings):
         dotenv.save_dotenv_value(dotenv.KEY_RFC_PASSWORD, settings["rfc_password"])
     if settings["root_password"] != PASSWORD_PLACEHOLDER:
         if runtime.is_dockerized():
-            dotenv.save_dotenv_value(dotenv.KEY_ROOT_PASSWORD, settings["root_password"])
+            dotenv.save_dotenv_value(
+                dotenv.KEY_ROOT_PASSWORD, settings["root_password"]
+            )
             set_root_password(settings["root_password"])
 
     # Handle secrets separately - merge with existing preserving comments/order and support deletions
     secrets_manager = get_default_secrets_manager()
     submitted_content = settings["secrets"]
     secrets_manager.save_secrets_with_merge(submitted_content)
-
 
 
 def get_default_settings() -> Settings:
@@ -457,7 +492,9 @@ def get_default_settings() -> Settings:
         root_password="",
         agent_profile=get_default_value("agent_profile", "agent0"),
         agent_knowledge_subdir=get_default_value("agent_knowledge_subdir", "custom"),
-        workdir_path=get_default_value("workdir_path", files.get_abs_path_dockerized("usr/workdir")),
+        workdir_path=get_default_value(
+            "workdir_path", files.get_abs_path_dockerized("usr/workdir")
+        ),
         workdir_show=get_default_value("workdir_show", True),
         workdir_max_depth=get_default_value("workdir_max_depth", 5),
         workdir_max_files=get_default_value("workdir_max_files", 20),
@@ -468,8 +505,12 @@ def get_default_settings() -> Settings:
         rfc_url=get_default_value("rfc_url", "localhost"),
         rfc_password="",
         rfc_port_http=get_default_value("rfc_port_http", 55080),
-        websocket_server_restart_enabled=get_default_value("websocket_server_restart_enabled", True),
-        uvicorn_access_logs_enabled=get_default_value("uvicorn_access_logs_enabled", False),
+        websocket_server_restart_enabled=get_default_value(
+            "websocket_server_restart_enabled", True
+        ),
+        uvicorn_access_logs_enabled=get_default_value(
+            "uvicorn_access_logs_enabled", False
+        ),
         stt_model_size=get_default_value("stt_model_size", "base"),
         stt_language=get_default_value("stt_language", "en"),
         stt_silence_threshold=get_default_value("stt_silence_threshold", 0.3),
@@ -497,7 +538,9 @@ def _apply_settings(previous: Settings | None):
         from initialize import initialize_agent
 
         for ctx in AgentContext.all():
-            profile = str(getattr(ctx.config, "profile", "") or _settings["agent_profile"])
+            profile = str(
+                getattr(ctx.config, "profile", "") or _settings["agent_profile"]
+            )
             config = initialize_agent(override_settings={"agent_profile": profile})
             ctx.config = config  # reinitialize context config with new settings
             # apply config to agents
@@ -508,9 +551,9 @@ def _apply_settings(previous: Settings | None):
 
         # reload whisper model if necessary
         if not previous or _settings["stt_model_size"] != previous["stt_model_size"]:
-            task = defer.DeferredTask().start_task(
-                whisper.preload, _settings["stt_model_size"]
-            )  # TODO overkill, replace with background task
+            task = defer.EventLoopThread().run_coroutine(
+                whisper.preload(_settings["stt_model_size"])
+            )
 
         # update mcp settings if necessary
         if not previous or _settings["mcp_servers"] != previous["mcp_servers"]:
@@ -525,19 +568,19 @@ def _apply_settings(previous: Settings | None):
                     priority=NotificationPriority.NORMAL,
                     message="Updating MCP settings...",
                     display_time=999,
-                    group="settings-mcp"
+                    group="settings-mcp",
                 )
 
                 mcp_config = MCPConfig.get_instance()
                 try:
                     MCPConfig.update(mcp_servers)
                 except Exception as e:
-                    
+
                     NotificationManager.send_notification(
                         type=NotificationType.ERROR,
                         priority=NotificationPriority.HIGH,
                         message="Failed to update MCP settings",
-                        detail=str(e),                        
+                        detail=str(e),
                     )
                     (
                         PrintStyle(
@@ -562,12 +605,12 @@ def _apply_settings(previous: Settings | None):
                     type=NotificationType.INFO,
                     priority=NotificationPriority.NORMAL,
                     message="Finished updating MCP settings.",
-                    group="settings-mcp"
+                    group="settings-mcp",
                 )
 
-            task2 = defer.DeferredTask().start_task(
-                update_mcp_settings, config.mcp_servers
-            )  # TODO overkill, replace with background task
+            task2 = defer.EventLoopThread().run_coroutine(
+                update_mcp_settings(config.mcp_servers)
+            )
 
         # update token in mcp server
         current_token = (
@@ -580,9 +623,9 @@ def _apply_settings(previous: Settings | None):
 
                 DynamicMcpProxy.get_instance().reconfigure(token=token)
 
-            task3 = defer.DeferredTask().start_task(
-                update_mcp_token, current_token
-            )  # TODO overkill, replace with background task
+            task3 = defer.EventLoopThread().run_coroutine(
+                update_mcp_token(current_token)
+            )
 
         # update token in a2a server
         if not previous or current_token != previous["mcp_server_token"]:
@@ -592,25 +635,25 @@ def _apply_settings(previous: Settings | None):
 
                 DynamicA2AProxy.get_instance().reconfigure(token=token)
 
-            task4 = defer.DeferredTask().start_task(
-                update_a2a_token, current_token
-            )  # TODO overkill, replace with background task
+            task4 = defer.EventLoopThread().run_coroutine(
+                update_a2a_token(current_token)
+            )
 
 
 def _env_to_dict(data: str):
     result = {}
     for line in data.splitlines():
         line = line.strip()
-        if not line or line.startswith('#'):
+        if not line or line.startswith("#"):
             continue
-        
-        if '=' not in line:
+
+        if "=" not in line:
             continue
-            
-        key, value = line.split('=', 1)
+
+        key, value = line.split("=", 1)
         key = key.strip()
         value = value.strip()
-        
+
         # If quoted, treat as string
         if value.startswith('"') and value.endswith('"'):
             result[key] = value[1:-1].replace('\\"', '"')  # Unescape quotes
@@ -622,7 +665,7 @@ def _env_to_dict(data: str):
                 result[key] = json.loads(value)
             except (json.JSONDecodeError, ValueError):
                 result[key] = value
-    
+
     return result
 
 
@@ -638,8 +681,8 @@ def _dict_to_env(data_dict):
             lines.append(f'{key}={json.dumps(value, separators=(",", ":"))}')
         else:
             # Numbers and other types as unquoted strings
-            lines.append(f'{key}={value}')
-    
+            lines.append(f"{key}={value}")
+
     return "\n".join(lines)
 
 
