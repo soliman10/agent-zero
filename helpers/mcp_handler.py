@@ -22,6 +22,9 @@ from shutil import which
 from datetime import timedelta
 import json
 from helpers import errors
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from agent import Agent
 from helpers import settings
 from helpers.log import LogItem
 
@@ -721,7 +724,7 @@ class MCPConfig(BaseModel):
                     tools.append({f"{server.name}.{tool['name']}": tool_copy})
             return tools
 
-    def get_tools_prompt(self, server_name: str = "") -> str:
+    def get_tools_prompt(self, agent: "Agent", server_name: str = "") -> str:
         """Get a prompt for all tools"""
 
         # just to wait for pending initialization
@@ -762,16 +765,8 @@ class MCPConfig(BaseModel):
 
                     prompt += "\n"
 
-                    prompt += (
-                        f"#### Usage:\n"
-                        f"{{\n"
-                        # f'    "observations": ["..."],\n' # TODO: this should be a prompt file with placeholders
-                        f'    "thoughts": ["..."],\n'
-                        # f'    "reflection": ["..."],\n' # TODO: this should be a prompt file with placeholders
-                        f"    \"tool_name\": \"{server_name}.{tool['name']}\",\n"
-                        f'    "tool_args": !follow schema above\n'
-                        f"}}\n"
-                    )
+                    usage_prompt = agent.read_prompt("agent.system.tool.mcp.md", tool_name=f"{server_name}.{tool['name']}")
+                    prompt += f"{usage_prompt}\n"
 
         return prompt
 
